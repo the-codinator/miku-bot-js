@@ -2,6 +2,7 @@ import discord from 'discord.js';
 import logger from './logger';
 import commands from './miku-commands';
 import { mikuPrefix, mikuTag } from './miku-config';
+import waitingRoom from './miku-waiting-room';
 
 class MikuBot {
   readonly bot = new discord.Client();
@@ -42,7 +43,7 @@ class MikuBot {
       });
     });
 
-
+    this.bot.on('voiceStateUpdate', waitingRoom);
   }
 }
 
