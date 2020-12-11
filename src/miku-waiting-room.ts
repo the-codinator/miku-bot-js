@@ -2,18 +2,18 @@ import discord from 'discord.js';
 import logger from './logger';
 import { dotaChannel, waitingRoomChannel, waitingRoomSize } from './miku-config';
 
-async function waitingRoom(before: discord.VoiceState, after: discord.VoiceState) {
+async function waitingRoom(before: discord.VoiceState, after: discord.VoiceState): Promise<boolean> {
   if (!after?.channel) {
     // Left voice channel
-    return;
+    return false;
   }
   const from = after.channel;
   if (from.id === before?.channel?.id) {
     // Event is not for channel change
-    return;
+    return false;
   }
   if (from.name !== waitingRoomChannel) {
-    return;
+    return false;
   }
   const members = from.members;
   const humans = members.filter((member) => !member.user.bot);
@@ -22,12 +22,13 @@ async function waitingRoom(before: discord.VoiceState, after: discord.VoiceState
     const to = from.guild.channels.cache.find(ch => ch.name === dotaChannel);
     if (!to || to.isText()) {
       logger.warn('Could not find target room', dotaChannel);
-      return;
+      return false;
     }
     // Move members;
     await Promise.all(members.map(member => member.voice.setChannel(to)))
     return true;
   }
+  return false;
 }
 
 export default waitingRoom;
