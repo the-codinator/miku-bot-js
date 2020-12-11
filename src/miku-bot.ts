@@ -19,16 +19,17 @@ class MikuBot {
     });
 
     this.bot.on('message', async (msg) => {
-      const args = msg.content.split(/\s+/);
+      const args = msg.content.trim().split(/\s+/);
       const prefix = args.shift();
       const cmd = args.shift();
 
-      if ((prefix === mikuPrefix || prefix === mikuTag) && cmd && cmd in commands) {
+      if ((prefix === mikuPrefix || prefix === mikuTag) && msg.author.id !== this.bot.user?.id && cmd && cmd in commands) {
         try {
           logger.info(`command:${cmd} owner=${msg.author.username}`);
           await commands[cmd](msg, args);
         } catch (e) {
           logger.error(`command:${cmd}: failed`, e);
+          console.log(e);
         }
       }
     });

@@ -1,10 +1,17 @@
-import { Connection, createConnection, ResultSetHeader } from 'mysql2/promise';
+import { Connection, createConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import logger from './logger';
 
 class DbHelper {
   connection: Connection | undefined;
 
   async init() {
+    if (this.connection) {
+      try {
+        await this.connection.end();
+      } catch (e) {
+        logger.warn('Failed to end DB connection', e);
+      }
+    }
     this.connection = await createConnection({
       host: 'localhost',
       user: 'miku',
@@ -15,156 +22,86 @@ class DbHelper {
     logger.info('DB: connected');
   }
 
-  async report(reporter: string, reportee: string, ts: string, retry = true): Promise<any> {
-    try {
-      const [result] = await this.connection!.query(
-        `INSERT INTO reports VALUES ('${reporter}', '${reportee}', 1, '${ts}', NULL) ON DUPLICATE KEY UPDATE count = count + 1, report_ts = '${ts}'`
-      );
-      return (result as ResultSetHeader).affectedRows;
-    } catch (e) {
-      if (retry) {
-        await this.init();
-        return this.report(reporter, reportee, ts, false);
-      } else {
-        throw e;
-      }
-    }
+  async report(reporter: string, reportee: string, ts: string) {
+    const [{ affectedRows }] = await this.connection!.query<ResultSetHeader>(
+      `INSERT INTO reports VALUES ('${reporter}', '${reportee}', 1, '${ts}', NULL) ON DUPLICATE KEY UPDATE count = count + 1, report_ts = '${ts}'`
+    );
+    return affectedRows;
   }
 
-  // def report(self, reporter, reportee, t, retry = True):
-  //       try:
-  //           with self.db.cursor() as cursor:
-  //               affectedRowsCount = cursor.execute("INSERT INTO reports VALUES ('%s', '%s', 1, '%s', NULL) ON DUPLICATE KEY UPDATE count = count + 1, report_ts = '%s'" % (reporter, reportee, t, t))
-  //               self.db.commit()
-  //           return affectedRowsCount
-  //       except (OperationalError, InterfaceError) as e:
-  //           if retry:
-  //               self.__init__()
-  //               return self.report(reporter, reportee, t, False)
-  //           else:
-  //               raise
+  async request(requestor: string, requestee: string, ts: string) {
+    const [{ affectedRows }] = await this.connection!.query<ResultSetHeader>(
+      `UPDATE reports SET request_ts = '${ts}' WHERE reporter = '${requestee}' AND reportee = '${requestor}'`
+    );
+    return affectedRows;
+  }
 
-  //   def request(self, requestor, requestee, t, retry = True):
-  //       try:
-  //           with self.db.cursor() as cursor:
-  //               affectedRowsCount = cursor.execute("UPDATE reports SET request_ts = '%s' WHERE reporter = '%s' AND reportee = '%s'" % (t, requestee, requestor))
-  //               self.db.commit()
-  //           return affectedRowsCount
-  //       except (OperationalError, InterfaceError) as e:
-  //           if retry:
-  //               self.__init__()
-  //               return self.request(requestor, requestee, t, False)
-  //           else:
-  //               raise
+  async unreport(reporter: string, reportee: string) {
+    const [{ affectedRows }] = await this.connection!.query<ResultSetHeader>(
+      `DELETE FROM reports WHERE reporter = '${reporter}' AND reportee = '${reportee}' AND count > 0`
+    );
+    return affectedRows;
+  }
 
-  //   def unreport(self, reporter, reportee, retry = True):
-  //       try:
-  //           with self.db.cursor() as cursor:
-  //               # affectedRowsCount = cursor.execute("UPDATE reports SET count = count - 1 WHERE reporter = '%s' AND reportee = '%s' AND count > 0" % (reporter, reportee))
-  //               affectedRowsCount = cursor.execute("DELETE FROM reports WHERE reporter = '%s' AND reportee = '%s' AND count > 0" % (reporter, reportee))
-  //               self.db.commit()
-  //           return affectedRowsCount
-  //       except (OperationalError, InterfaceError) as e:
-  //           if retry:
-  //               self.__init__()
-  //               return self.unreport(reporter, reportee, False)
-  //           else:
-  //               raise
+  async getReport(reporter: string, reportee: string) {
+    const [result] = await this.connection!.query<RowDataPacket[]>(
+      `SELECT count, report_ts FROM reports WHERE reporter = '${reporter}' AND reportee = '${reportee}'`
+    );
+    return result && result[0]
+      ? { count: result[0].count, tsString: `Last reported at ${result[0].report_ts}` }
+      : { count: 0, tsString: '' };
+  }
 
-  //   def get_report(self, reporter, reportee, retry = True):
-  //       try:
-  //           with self.db.cursor() as cursor:
-  //               cursor.execute("SELECT count, report_ts FROM reports WHERE reporter = '%s' AND reportee = '%s'" % (reporter, reportee))
-  //               ans = cursor.fetchone()
-  //           return (reporter, reportee, "0", "") if ans is None else (reporter, reportee, str(ans[0]), "Last reported at " + ans[1])
-  //       except (OperationalError, InterfaceError) as e:
-  //           if retry:
-  //               self.__init__()
-  //               return self.get_report(reporter, reportee, False)
-  //           else:
-  //               raise
+  async getReportAggregated(user: string) {
+    const [[{ c }]] = await this.connection!.query<RowDataPacket[]>(
+      `SELECT SUM(count) AS c FROM reports WHERE reportee = '${user}'`
+    );
+    const [[{ c2 }]] = await this.connection!.query<RowDataPacket[]>(
+      `SELECT SUM(count) AS c2 FROM reports WHERE reporter = '${user}'`
+    );
+    return { gotReported: c || 0, reportedOthers: c2 || 0 };
+  }
 
-  //   def get_report_aggregated(self, user, retry = True):
-  //       try:
-  //           with self.db.cursor() as cursor:
-  //               cursor.execute("SELECT SUM(count) FROM reports WHERE reportee = '%s'" % (user))
-  //               ans = cursor.fetchone()[0]
-  //               got_reported = "0" if ans is None else str(ans)
-  //           with self.db.cursor() as cursor:
-  //               cursor = self.db.cursor()
-  //               cursor.execute("SELECT SUM(count) FROM reports WHERE reporter = '%s'" % (user))
-  //               ans = cursor.fetchone()[0]
-  //               reported_others = "0" if ans is None else str(ans)
-  //           return (user, got_reported, reported_others)
-  //       except (OperationalError, InterfaceError) as e:
-  //           if retry:
-  //               self.__init__()
-  //               return self.get_report_aggregated(user, False)
-  //           else:
-  //               raise
+  async getReportVerbose(mode: 'reporter' | 'reportee', user: string) {
+    const [result] = await this.connection!.query<RowDataPacket[]>(
+      `SELECT ${this.flipMode(mode)} as x, count FROM reports WHERE ${mode} = '${user}' AND count > 0`
+    );
+    return result.map(({ x, count }) => `${x} (${count})`).join(', ');
+  }
 
-  //   def get_report_verbose(self, mode, user, retry = True):
-  //       try:
-  //           with self.db.cursor() as cursor:
-  //               cursor.execute("SELECT %s, count FROM reports WHERE %s = '%s' AND count > 0" % (self.flipMode(mode), mode, user))
-  //           return ", ".join(("%s (%d)" % i) for i in cursor.fetchall())
-  //       except (OperationalError, InterfaceError) as e:
-  //           if retry:
-  //               self.__init__()
-  //               return self.get_report_verbose(mode, user, False)
-  //           else:
-  //               raise
+  async getRequestsFrom(requestor: string) {
+    const [result] = await this.connection!.query<RowDataPacket[]>(
+      `SELECT reporter, request_ts FROM reports WHERE reportee = '${requestor}' AND request_ts IS NOT NULL`
+    );
+    return result.map(({ reporter, request_ts }) => `${reporter} (${request_ts})`).join(', ');
+  }
 
-  //   def get_requests_from(self, requestor, retry = True):
-  //       try:
-  //           with self.db.cursor() as cursor:
-  //               cursor.execute("SELECT reporter, request_ts FROM reports WHERE reportee = '%s' AND request_ts IS NOT NULL" % (requestor))
-  //           return ", ".join(("%s (%s)" % i) for i in cursor.fetchall())
-  //       except (OperationalError, InterfaceError) as e:
-  //           if retry:
-  //               self.__init__()
-  //               return self.get_requests_from(requestor, False)
-  //           else:
-  //               raise
+  async getRequestsTo(requestee: string) {
+    const [result] = await this.connection!.query<RowDataPacket[]>(
+      `SELECT reportee, request_ts FROM reports WHERE reporter = '${requestee}' AND request_ts IS NOT NULL`
+    );
+    return result.map(({ reportee, request_ts }) => `${reportee} (${request_ts})`).join(', ');
+  }
 
-  //   def get_requests_to(self, requestee, retry = True):
-  //       try:
-  //           with self.db.cursor() as cursor:
-  //               cursor.execute("SELECT reportee, request_ts FROM reports WHERE reporter = '%s' AND request_ts IS NOT NULL" % (requestee))
-  //           return ", ".join(("%s (%s)" % i) for i in cursor.fetchall())
-  //       except (OperationalError, InterfaceError) as e:
-  //           if retry:
-  //               self.__init__()
-  //               return self.get_requests_to(requestee, False)
-  //           else:
-  //               raise
+  async deleteRequest(requestor: string, requestee: string) {
+    const [{ affectedRows }] = await this.connection!.query<ResultSetHeader>(
+      `UPDATE reports SET request_ts = NULL WHERE reporter = '${requestee}' AND reportee = '${requestor}'`
+    );
+    return affectedRows;
+  }
 
-  //   def delete_request(self, requestor, requestee, retry = True):
-  //       try:
-  //           with self.db.cursor() as cursor:
-  //               affectedRowsCount = cursor.execute("UPDATE reports SET request_ts = NULL WHERE reporter = '%s' AND reportee = '%s'" % (requestee, requestor))
-  //               self.db.commit()
-  //           return affectedRowsCount
-  //       except (OperationalError, InterfaceError) as e:
-  //           if retry:
-  //               self.__init__()
-  //               return self.delete_request(requestor, requestee, False)
-  //           else:
-  //               raise
+  async resetReports(mode: 'reporter' | 'reportee', user: string) {
+    const [{ affectedRows }] = await this.connection!.query<ResultSetHeader>(
+      `DELETE FROM reports WHERE ${mode} = '${user}'`
+    );
+    return affectedRows;
+  }
 
-  //   def reset_reports(self, mode, user):
-  //       with self.db.cursor() as cursor:
-  //           affectedRowsCount = cursor.execute("DELETE FROM reports WHERE %s = '%s'" % (mode, user))
-  //           self.db.commit()
-  //           return affectedRowsCount
-
-  //   def flipMode(self, mode):
-  //       if mode == "reporter":
-  //           return "reportee"
-  //       elif mode == "reportee":
-  //           return "reporter"
-  //       else:
-  //           return None
+  private flipMode(mode: string) {
+    if (mode === 'reporter') return 'reportee';
+    else if (mode === 'reportee') return 'reporter';
+    else return undefined;
+  }
 }
 
 export default new DbHelper();

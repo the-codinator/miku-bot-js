@@ -7,9 +7,9 @@ export function isInvalidUserTag(s: string) {
   return !pattern.test(s);
 }
 
-export function fixId(s: string) {
+export function fixTag(s: string) {
   if (s?.startsWith('<@!')) {
-    s.replace('!', '');
+    s = s.replace('!', '');
   }
   return s;
 }
