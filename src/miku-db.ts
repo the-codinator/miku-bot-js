@@ -85,7 +85,7 @@ class DbHelper {
 
   async deleteRequest(requestor: string, requestee: string) {
     const [{ affectedRows }] = await this.connection!.query<ResultSetHeader>(
-      `UPDATE reports SET request_ts = NULL WHERE reporter = '${requestee}' AND reportee = '${requestor}'`
+      `UPDATE reports SET request_ts = NULL WHERE reporter = '${requestee}' AND reportee = '${requestor}' AND request_ts IS NOT NULL`
     );
     return affectedRows;
   }
