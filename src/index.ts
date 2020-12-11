@@ -8,6 +8,8 @@ import bot from './miku-bot';
 async function main() {
   logger.info('Miku Bot starting...');
   await db.init();
+  bot.registerCommands();
+  bot.registerEvents();
   await bot.start();
 }
 

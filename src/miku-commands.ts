@@ -6,6 +6,7 @@ import logger from './logger';
 
 const commands: Record<string, (msg: discord.Message, args: string[]) => Promise<void>> = {
   health,
+  error,
   hello,
   bye,
   report,
@@ -25,6 +26,10 @@ export default commands;
 async function health(msg: discord.Message, args: string[]) {
   await db.init();
   await msg.channel.send('OK');
+}
+
+function error(msg: discord.Message, args: string[]) {
+  return Promise.reject(new Error('dummy error'));
 }
 
 async function hello(msg: discord.Message, args: string[]) {
