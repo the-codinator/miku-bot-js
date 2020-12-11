@@ -1,0 +1,21 @@
+#!/bin/bash -e
+
+# export DISCORD_TOKEN={{discord_token}}
+# https://discordapp.com/developers/applications/me
+
+echo $(date) Starting Miku Bot
+
+while true
+do
+    yarn clean
+    yarn
+    yarn build
+    yarn start 2>>error.log
+
+    echo Miku died :/ Restarting...
+
+    sleep 3
+done
+
+echo Exiting...
+
