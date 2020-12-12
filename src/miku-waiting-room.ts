@@ -12,23 +12,26 @@ async function waitingRoom(before: discord.VoiceState, after: discord.VoiceState
     // Event is not for channel change
     return false;
   }
-  if (from.name !== waitingRoomChannel) {
+  if (from.isText() || !from.name.includes(waitingRoomChannel)) {
+    // Wrong channel
     return false;
   }
   const members = from.members;
   const humans = members.filter((member) => !member.user.bot);
-  if (humans.size >= waitingRoomSize) {
-    logger.info('Waiting Room ready, moving everyone!');
-    const to = from.guild.channels.cache.find(ch => ch.name === dotaChannel);
-    if (!to || to.isText()) {
-      logger.warn('Could not find target room', dotaChannel);
-      return false;
-    }
-    // Move members;
-    await Promise.all(members.map(member => member.voice.setChannel(to)))
-    return true;
+  if (humans.size < waitingRoomSize) {
+    // Not yet full
+    return false;
   }
-  return false;
+  const to = from.guild.channels.cache.find((ch) => ch.name.startsWith(dotaChannel));
+  if (!to || to.isText()) {
+    // Channels were not what we expected
+    logger.warn('Could not find target room', dotaChannel);
+    return false;
+  }
+  // Move members
+  logger.info(`Waiting Room ready, moving everyone to ${to.name}!`);
+  await Promise.all(members.map((member) => member.voice.setChannel(to)));
+  return true;
 }
 
 export default waitingRoom;
